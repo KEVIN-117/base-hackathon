@@ -5,6 +5,7 @@ import { Breadcrumbs } from "./Breadcrumbs"
 const meta: Meta<typeof Breadcrumbs> = {
     title: "Example/Breadcrumbs",
     component: Breadcrumbs,
+    tags: ['autodocs'],
 } satisfies Meta<typeof Breadcrumbs>
 
 
