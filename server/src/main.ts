@@ -1,36 +1,43 @@
 import { NestFactory } from '@nestjs/core';
+import * as compression from 'compression';
 import { AppModule } from './app.module';
-import { envs } from './config';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { bold } from 'chalk';
+import { RequestMethod, VersioningType } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { ConfigService } from '@nestjs/config';
+import { json, urlencoded } from 'express';
+import { configSwagger } from './helpers/swagger.helper';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
-  const config = new DocumentBuilder()
-    .setTitle('Base Api Documentation')
-    .setDescription('This is the base api documentation')
-    .setVersion('1.0')
-    .addTag('auth')
-    .addTag('statistic')
-    .addBearerAuth()
-    .addApiKey({ type: 'apiKey', name: 'apiKey', in: 'header' })
-    .build();
-  const documentFactory = () => SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, documentFactory);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {});
+  const envService = app.get(ConfigService);
+  const packageJson = envService.get('packageJson');
+  app.use(json({ limit: envService.get('limitRequest') }));
+  app.use(urlencoded({ extended: true, limit: envService.get('limitRequest') }));
+  app.enableVersioning({ type: VersioningType.URI });
+  app.use(compression());
+  app.setGlobalPrefix('api', {
+    exclude: [{ path: '/', method: RequestMethod.GET }],
+  });
 
-  app.setGlobalPrefix('api');
-  const logger = new Logger('bootstrap');
-  const { PORT } = envs;
-  await app.listen(PORT);
-  logger.log(`Application listening on port ${PORT}`);
-  logger.log(`Application running in ${process.env.NODE_ENV} mode`);
-  logger.log(`Application Docs in URL http://localhost:${PORT}/docs`);
-  logger.log(`Application API running in URL http://localhost:${PORT}/api`);
+  //app.useGlobalPipes(new GlobalValidationPipe());
+  app.enableCors({
+    origin: envService.get('enableCors'),
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
+  if (envService.get('environment') !== 'production') {
+    configSwagger(app, packageJson);
+  }
+  const port = envService.get<number>('port');
+  await app.listen(port, '0.0.0.0').then(async () => {
+    console.info(
+      bold.blue(
+        `🚀 "${packageJson.name}", version:"${packageJson.version}" API is listening ON PORT`,
+        `${await app.getUrl()}/api`,
+      ),
+    );
+  });
 }
+
 bootstrap();
